@@ -126,15 +126,29 @@ class THR:
                             return True
                         else:
                             console.print(f"[yellow]Upload response didn't contain 'uploaded=1'. URL: {response.url}")
+                            
+                            error_dump_path = os.path.abspath(f"{meta['base_dir']}/tmp/{meta['uuid']}/[THR]_upload_error.html")
+                            with open(error_dump_path, 'w', encoding='utf-8') as f:
+                                f.write(response.text)
+                            console.print(f"[cyan]Saved full tracker response to: {error_dump_path}[/cyan]")
+
                             soup = BeautifulSoup(response.text, 'html.parser')
-                            error_text = soup.find('h2', string=re.compile(r'Error'))  # type: ignore
+                            error_text = soup.find('h2', string=re.compile(r'Error', re.IGNORECASE))
+                            error_div = soup.find('div', class_=re.compile(r'error', re.IGNORECASE))
+                            td_embedded = soup.find('td', class_='embedded')
 
                             if error_text:
                                 error_message = cast(Any, error_text).find_next('p')
                                 if error_message:
-                                    console.print(
-                                        f"[red]Upload error: {error_message.text}"
-                                    )
+                                    console.print(f"[red]Upload error: {error_message.text.strip()}")
+                                else:
+                                    console.print(f"[red]Upload error: {error_text.text.strip()}")
+                            elif error_div:
+                                console.print(f"[red]Upload error: {error_div.text.strip()}")
+                            elif td_embedded and ("failed" in td_embedded.text.lower() or "error" in td_embedded.text.lower()):
+                                console.print(f"[red]Upload error: {td_embedded.text.strip()}")
+                            else:
+                                console.print("[red]Could not parse explicit error message. Please open the dumped HTML file to see what the tracker returned.[/red]")
 
                             return False
                 else:
