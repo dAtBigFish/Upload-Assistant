@@ -110,62 +110,80 @@ class THR:
                 if cookies:
                     console.print("[green]Using authenticated session for upload")
 
-                    async with httpx.AsyncClient(cookies=cookies, follow_redirects=True, timeout=60.0) as session:
-                        with console.status("Uploading to THR, please wait...", spinner="dots"):
-                            response = await session.post(url=url, files=files, data=payload, headers=headers)
+                    max_retries = 3
+                    for attempt in range(max_retries):
+                        try:
+                            async with httpx.AsyncClient(cookies=cookies, follow_redirects=True, timeout=60.0) as session:
+                                with console.status(f"Uploading to THR (Attempt {attempt + 1}/{max_retries}), please wait...", spinner="dots"):
+                                    response = await session.post(url=url, files=files, data=payload, headers=headers)
 
-                        if meta.get('debug'):
-                            console.print(f"[dim]Response status: {response.status_code}")
-                            console.print(f"[dim]Response URL: {response.url}")
-                            console.print(response.text[:500] + "...")
+                                if meta.get('debug'):
+                                    console.print(f"[dim]Response status: {response.status_code}")
+                                    console.print(f"[dim]Response URL: {response.url}")
+                                    console.print(response.text[:500] + "...")
 
-                        if "uploaded=1" in str(response.url):
-                            tracker_status = cast(dict[str, Any], meta.get('tracker_status', {}))
-                            tracker_status.setdefault(self.tracker, {})
-                            tracker_status[self.tracker]['status_message'] = response.url
-                            return True
-                        else:
-                            console.print(f"[yellow]Upload response didn't contain 'uploaded=1'. URL: {response.url}")
-                            
-                            error_dump_path = os.path.abspath(f"{meta['base_dir']}/tmp/{meta['uuid']}/[THR]_upload_error.html")
-                            with open(error_dump_path, 'w', encoding='utf-8') as f:
-                                f.write(response.text)
-                            console.print(f"[cyan]Saved full tracker response to: {error_dump_path}[/cyan]")
-
-                            soup = BeautifulSoup(response.text, 'html.parser')
-                            error_text = soup.find('h2', string=re.compile(r'Error', re.IGNORECASE))
-                            error_div = soup.find('div', class_=re.compile(r'error', re.IGNORECASE))
-                            td_embedded = soup.find('td', class_='embedded')
-
-                            if error_text:
-                                error_message = cast(Any, error_text).find_next('p')
-                                if error_message:
-                                    console.print(f"[red]Upload error: {error_message.text.strip()}")
+                                if "uploaded=1" in str(response.url):
+                                    tracker_status = cast(dict[str, Any], meta.get('tracker_status', {}))
+                                    tracker_status.setdefault(self.tracker, {})
+                                    tracker_status[self.tracker]['status_message'] = response.url
+                                    return True
                                 else:
-                                    console.print(f"[red]Upload error: {error_text.text.strip()}")
-                            elif error_div:
-                                console.print(f"[red]Upload error: {error_div.text.strip()}")
-                            elif td_embedded and ("failed" in td_embedded.text.lower() or "error" in td_embedded.text.lower()):
-                                console.print(f"[red]Upload error: {td_embedded.text.strip()}")
-                            else:
-                                console.print("[red]Could not parse explicit error message. Please open the dumped HTML file to see what the tracker returned.[/red]")
+                                    console.print(f"[yellow]Upload response didn't contain 'uploaded=1'. URL: {response.url}")
+                                    
+                                    error_dump_path = os.path.abspath(f"{meta['base_dir']}/tmp/{meta['uuid']}/[THR]_upload_error.html")
+                                    with open(error_dump_path, 'w', encoding='utf-8') as f:
+                                        f.write(response.text)
+                                    console.print(f"[cyan]Saved full tracker response to: {error_dump_path}[/cyan]")
 
+                                    soup = BeautifulSoup(response.text, 'html.parser')
+                                    error_text = soup.find('h2', string=re.compile(r'Error', re.IGNORECASE))
+                                    error_div = soup.find('div', class_=re.compile(r'error', re.IGNORECASE))
+                                    td_embedded = soup.find('td', class_='embedded')
+
+                                    if error_text:
+                                        error_message = cast(Any, error_text).find_next('p')
+                                        if error_message:
+                                            console.print(f"[red]Upload error: {error_message.text.strip()}")
+                                        else:
+                                            console.print(f"[red]Upload error: {error_text.text.strip()}")
+                                    elif error_div:
+                                        console.print(f"[red]Upload error: {error_div.text.strip()}")
+                                    elif td_embedded and ("failed" in td_embedded.text.lower() or "error" in td_embedded.text.lower()):
+                                        console.print(f"[red]Upload error: {td_embedded.text.strip()}")
+                                    else:
+                                        console.print("[red]Could not parse explicit error message. Please open the dumped HTML file to see what the tracker returned.[/red]")
+
+                        except httpx.ReadTimeout:
+                            console.print("[bold red]Error: Upload timed out! The tracker server took longer than 60 seconds to respond.")
+                        except Exception as e:
+                            console.print(f"[red]Error during upload: {str(e)}")
+                            console.print_exception()
+                            if meta.get('debug') and response is not None:
+                                with contextlib.suppress(Exception):
+                                    console.print(f"[red]Response: {response.text[:500]}...")
+
+                        if attempt < max_retries - 1:
+                            if not bool(meta.get('unattended', False)):
+                                await asyncio.sleep(2)
+                                retry = cli_ui.ask_yes_no("Retry upload?", default=False)
+                                if retry:
+                                    continue
+                                else:
+                                    return False
+                            else:
+                                console.print("[yellow]Unattended mode active: skipping retry.")
+                                return False
+                        else:
+                            console.print("[yellow]Maximum retries reached. It may have uploaded, please check THR manually.")
                             return False
+                    return False
                 else:
                     console.print("[red]Failed to log in to THR for upload")
                     return False
 
-            except httpx.ReadTimeout:
-                console.print("[bold red]Error: Upload timed out! The tracker server took longer than 60 seconds to respond.")
-                console.print("[yellow]It may have actually uploaded successfully in the background, please check THR manually.")
-                return False
             except Exception as e:
-                console.print(f"[red]Error during upload: {str(e)}")
+                console.print(f"[red]Unhandled error during THR upload: {str(e)}")
                 console.print_exception()
-                if meta.get('debug') and response is not None:
-                    with contextlib.suppress(Exception):
-                        console.print(f"[red]Response: {response.text[:500]}...")
-                console.print("[yellow]It may have uploaded, please check THR manually")
                 return False
         else:
             console.print("[cyan]THR Request Data:")
