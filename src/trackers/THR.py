@@ -2,6 +2,7 @@
 import asyncio
 import contextlib
 import glob
+import http.cookiejar
 import json
 import os
 import platform
@@ -524,21 +525,22 @@ class THR:
 
         return page_dupes, has_next_page, next_page_number
 
-    async def login(self, meta: Meta) -> Optional[dict[str, Any]]:
+    async def login(self, meta: Meta) -> Optional[http.cookiejar.MozillaCookieJar]:
         if getattr(self, 'session_cookies', None):
             return getattr(self, 'session_cookies')
 
-        cookie_file = os.path.join(str(meta.get('base_dir', '')), 'data', 'cookies', 'THR.json')
+        cookie_file = os.path.abspath(f"{meta.get('base_dir', '')}/data/cookies/THR.txt")
+        cookie_jar = http.cookiejar.MozillaCookieJar(cookie_file)
+
         if os.path.exists(cookie_file):
             try:
-                with open(cookie_file, 'r', encoding='utf-8') as f:
-                    cookies = json.load(f)
-                async with httpx.AsyncClient(cookies=cookies, follow_redirects=True) as session:
+                cookie_jar.load(ignore_discard=True, ignore_expires=True)
+                async with httpx.AsyncClient(cookies=cookie_jar, follow_redirects=True) as session:
                     resp = await session.get('https://www.torrenthr.org/index.php')
                     if "logout.php" in resp.text:
-                        self.session_cookies = cookies
+                        self.session_cookies = cookie_jar
                         console.print('[green]Successfully loaded THR cookies from cache')
-                        return cookies
+                        return cookie_jar
                     else:
                         console.print('[yellow]THR cookies expired, logging in again...')
             except Exception as e:
@@ -557,7 +559,7 @@ class THR:
             'ssl': 'yes'
         }
         headers = {
-            'User-Agent': f'Upload Assistant/2.2 ({platform.system()} {platform.release()})',
+            'User-Agent': f'Upload Assistant/2.3 ({platform.system()} {platform.release()})',
             'Referer': 'https://www.torrenthr.org/login.php'
         }
 
@@ -578,15 +580,43 @@ class THR:
 
                 if "index.php" in str(resp.url) or "logout.php" in resp.text:
                     console.print('[green]Successfully logged in to THR')
-                    cookies = dict(session.cookies)
-                    self.session_cookies = cookies
+                    
+                    os.makedirs(os.path.dirname(cookie_file), exist_ok=True)
+                    
+                    for cookie_name in session.cookies:
+                        for cookie in session.cookies.jar:
+                            if cookie.name == cookie_name:
+                                rest = getattr(cookie, "_rest", {})
+                                rest_map = cast(dict[str, Any], rest) if isinstance(rest, dict) else {}
+                                ck = http.cookiejar.Cookie(
+                                    version=0,
+                                    name=cookie.name,
+                                    value=cookie.value,
+                                    port=None,
+                                    port_specified=False,
+                                    domain=cookie.domain if cookie.domain else '.torrenthr.org',
+                                    domain_specified=True,
+                                    domain_initial_dot=(cookie.domain or '.torrenthr.org').startswith('.'),
+                                    path=cookie.path if cookie.path else '/',
+                                    path_specified=True,
+                                    secure=bool(rest_map.get('secure')) if rest_map else True,
+                                    expires=None,
+                                    discard=False,
+                                    comment=None,
+                                    comment_url=None,
+                                    rest={},
+                                    rfc2109=False
+                                )
+                                cookie_jar.set_cookie(ck)
+                                break
+                                
                     try:
-                        os.makedirs(os.path.dirname(cookie_file), exist_ok=True)
-                        with open(cookie_file, 'w', encoding='utf-8') as f:
-                            json.dump(cookies, f)
+                        cookie_jar.save(ignore_discard=True, ignore_expires=True)
                     except Exception as e:
                         console.print(f'[yellow]Failed to save THR cookies to cache: {e}')
-                    return cookies
+                        
+                    self.session_cookies = cookie_jar
+                    return cookie_jar
                 else:
                     console.print('[red]Failed to log in to THR')
                     console.print(f'[red]Login response URL: {resp.url}')
