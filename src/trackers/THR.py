@@ -390,7 +390,7 @@ class THR:
         try:
             cookies = await self.login(meta)
 
-            client_args: dict[str, Any] = {'timeout': 10.0, 'follow_redirects': True}
+            client_args: dict[str, Any] = {'timeout': 30.0, 'follow_redirects': True}
             if cookies:
                 client_args['cookies'] = cookies
             else:
@@ -540,7 +540,7 @@ class THR:
         if os.path.exists(cookie_file):
             try:
                 cookie_jar.load(ignore_discard=True, ignore_expires=True)
-                async with httpx.AsyncClient(cookies=cookie_jar, follow_redirects=True) as session:
+                async with httpx.AsyncClient(cookies=cookie_jar, follow_redirects=True, timeout=30.0) as session:
                     resp = await session.get('https://www.torrenthr.org/index.php')
                     if "logout.php" in resp.text:
                         self.session_cookies = cookie_jar
@@ -568,7 +568,7 @@ class THR:
             'Referer': 'https://www.torrenthr.org/login.php'
         }
 
-        async with httpx.AsyncClient(follow_redirects=True) as session:
+        async with httpx.AsyncClient(follow_redirects=True, timeout=30.0) as session:
             try:
                 login_page = await session.get('https://www.torrenthr.org/login.php')
                 login_soup = BeautifulSoup(login_page.text, 'html.parser')
