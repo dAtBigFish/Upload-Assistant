@@ -110,8 +110,9 @@ class THR:
                 if cookies:
                     console.print("[green]Using authenticated session for upload")
 
-                    async with httpx.AsyncClient(cookies=cookies, follow_redirects=True) as session:
-                        response = await session.post(url=url, files=files, data=payload, headers=headers)
+                    async with httpx.AsyncClient(cookies=cookies, follow_redirects=True, timeout=60.0) as session:
+                        with console.status("Uploading to THR, please wait...", spinner="dots"):
+                            response = await session.post(url=url, files=files, data=payload, headers=headers)
 
                         if meta.get('debug'):
                             console.print(f"[dim]Response status: {response.status_code}")
@@ -140,6 +141,10 @@ class THR:
                     console.print("[red]Failed to log in to THR for upload")
                     return False
 
+            except httpx.ReadTimeout:
+                console.print("[bold red]Error: Upload timed out! The tracker server took longer than 60 seconds to respond.")
+                console.print("[yellow]It may have actually uploaded successfully in the background, please check THR manually.")
+                return False
             except Exception as e:
                 console.print(f"[red]Error during upload: {str(e)}")
                 console.print_exception()
