@@ -612,8 +612,9 @@ class THR:
                                 
                     try:
                         cookie_jar.save(ignore_discard=True, ignore_expires=True)
+                        console.print(f'[green]Cached cookies saved to: {cookie_file}')
                     except Exception as e:
-                        console.print(f'[yellow]Failed to save THR cookies to cache: {e}')
+                        console.print(f'[bold red]Error: Failed to save cached THR cookies to {cookie_file}. Details: {e}')
                         
                     self.session_cookies = cookie_jar
                     return cookie_jar
