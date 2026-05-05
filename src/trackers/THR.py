@@ -104,7 +104,7 @@ class THR:
             await asyncio.sleep(0.5)
             response: Optional[httpx.Response] = None
             try:
-                cookies = await self.login()
+                cookies = await self.login(meta)
 
                 if cookies:
                     console.print("[green]Using authenticated session for upload")
@@ -382,7 +382,7 @@ class THR:
             return dupes
 
         try:
-            cookies = await self.login()
+            cookies = await self.login(meta)
 
             client_args: dict[str, Any] = {'timeout': 10.0, 'follow_redirects': True}
             if cookies:
@@ -524,7 +524,26 @@ class THR:
 
         return page_dupes, has_next_page, next_page_number
 
-    async def login(self) -> Optional[dict[str, Any]]:
+    async def login(self, meta: Meta) -> Optional[dict[str, Any]]:
+        if getattr(self, 'session_cookies', None):
+            return getattr(self, 'session_cookies')
+
+        cookie_file = os.path.join(str(meta.get('base_dir', '')), 'data', 'cookies', 'THR.json')
+        if os.path.exists(cookie_file):
+            try:
+                with open(cookie_file, 'r', encoding='utf-8') as f:
+                    cookies = json.load(f)
+                async with httpx.AsyncClient(cookies=cookies, follow_redirects=True) as session:
+                    resp = await session.get('https://www.torrenthr.org/index.php')
+                    if "logout.php" in resp.text:
+                        self.session_cookies = cookies
+                        console.print('[green]Successfully loaded THR cookies from cache')
+                        return cookies
+                    else:
+                        console.print('[yellow]THR cookies expired, logging in again...')
+            except Exception as e:
+                console.print(f'[yellow]Failed to load cached THR cookies: {e}')
+
         console.print("[yellow]Logging in to THR...")
         url = 'https://www.torrenthr.org/takelogin.php'
 
@@ -559,7 +578,15 @@ class THR:
 
                 if "index.php" in str(resp.url) or "logout.php" in resp.text:
                     console.print('[green]Successfully logged in to THR')
-                    return dict(session.cookies)
+                    cookies = dict(session.cookies)
+                    self.session_cookies = cookies
+                    try:
+                        os.makedirs(os.path.dirname(cookie_file), exist_ok=True)
+                        with open(cookie_file, 'w', encoding='utf-8') as f:
+                            json.dump(cookies, f)
+                    except Exception as e:
+                        console.print(f'[yellow]Failed to save THR cookies to cache: {e}')
+                    return cookies
                 else:
                     console.print('[red]Failed to log in to THR')
                     console.print(f'[red]Login response URL: {resp.url}')
