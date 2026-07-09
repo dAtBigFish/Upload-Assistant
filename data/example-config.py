@@ -843,13 +843,8 @@ config = {
         "THR": {
             # Instead of using the tracker acronym for folder name when sym/hard linking, you can use a custom name
             "link_dir_name": "",
-            "username": "",
-            "password": "",
-            "img_api": "get this from the forum post",
-            "announce_url": "http://www.torrenthr.org/announce.php?passkey=yourpasskeyhere",
-            "pronfo_api_key": "",
-            "pronfo_theme": "pronfo theme code",
-            "pronfo_rapi_id": "pronfo remote api id",
+            "api_key": "",
+            "announce_url": "https://www.torrenthr.org/announce/customannounceurl",
             "anon": False,
         },
         "TIK": {
