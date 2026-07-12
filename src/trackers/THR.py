@@ -33,13 +33,16 @@ class THR(UNIT3D):
         _ = (category, reverse, mapping_only)
         genres = str(meta.get('genres', '')).lower()
         keywords = str(meta.get('keywords', '')).lower()
-        meta_category = str(meta.get('category', ''))
+        meta_category = str(meta.get('category', '')).upper()
         is_disc = str(meta.get('is_disc', ''))
         sd = int(meta.get('sd', 0) or 0)
-        cat_id = '17'  # Default to Filmovi/HD
+        
+        cat_id = None
 
         if 'documentary' in genres or 'documentary' in keywords:
             cat_id = '12'
+        elif 'animation' in genres or 'animation' in keywords:
+            cat_id = '18'
         elif meta_category == "MOVIE":
             if is_disc == "BMDV" or is_disc == "BDMV":
                 cat_id = '40'
@@ -51,6 +54,25 @@ class THR(UNIT3D):
             cat_id = '7' if sd == 1 else '34'
         elif bool(meta.get('anime')):
             cat_id = '31'
+
+        if cat_id is None:
+            from rich.prompt import Prompt
+            from rich.console import Console
+            console = Console()
+            
+            categories = {
+                "Filmovi/HD": "17",
+                "Filmovi/SD": "4",
+                "Serije/HD": "34",
+                "Serije/SD": "7",
+                "Filmovi/BD": "40",
+                "Dokumentarni Filmovi": "12",
+                "Crtani Filmovi": "18"
+            }
+            
+            console.print("[yellow]THR Category could not be auto-detected. Please select a category:[/yellow]")
+            choice = Prompt.ask("Category", choices=list(categories.keys()), default="Filmovi/HD")
+            cat_id = categories[choice]
 
         return {'category_id': cat_id}
 
