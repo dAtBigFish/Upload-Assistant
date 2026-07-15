@@ -846,6 +846,8 @@ config = {
             "api_key": "",
             "announce_url": "https://www.torrenthr.org/announce/customannounceurl",
             "anon": False,
+            "internal": False,
+            "internal_groups": [],
         },
         "TIK": {
             # Instead of using the tracker acronym for folder name when sym/hard linking, you can use a custom name

@@ -201,5 +201,24 @@ class THR(UNIT3D):
         data: dict[str, str] = {}
         if info_hash:
             data['info_hash'] = info_hash
+
+        has_croatian = False
+        if meta.get('is_disc', '') == 'BDMV' and meta.get('bdinfo'):
+            for language in meta['bdinfo'].get('subtitles', []):
+                if language.lower() in ('croatian', 'hrv', 'hr', 'scr'):
+                    has_croatian = True
+                    break
+        elif meta.get('mediainfo'):
+            mi = meta['mediainfo']
+            if 'media' in mi and 'track' in mi['media']:
+                for track in mi['media']['track']:
+                    if track.get('@type') == "Text":
+                        language = track.get('Language_String2', track.get('Language', '')).lower()
+                        if language in ('hr', 'hrv', 'croatian', 'scr'):
+                            has_croatian = True
+                            break
+
+        if has_croatian:
+            data['has_croatian_subtitle'] = "1"
             
         return data
