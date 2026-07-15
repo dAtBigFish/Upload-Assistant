@@ -167,20 +167,37 @@ class THR(UNIT3D):
         }
 
     async def get_additional_data(self, meta: Meta) -> dict[str, str]:
-        import asyncio
-        from torf import Torrent
+        import aiofiles
+        import bencodepy
+        import hashlib
+        from typing import cast, Callable, Any
+        from src.console import console
         
+        info_hash = ''
         torrent_path = f"{meta['base_dir']}/tmp/{meta['uuid']}/BASE.torrent"
         
-        def _get_hash() -> str:
-            try:
-                torrent = Torrent.read(torrent_path)
-                return str(torrent.infohash)
-            except Exception:
-                return ''
+        try:
+            async with aiofiles.open(torrent_path, 'rb') as torrent_file:
+                torrent_content = await torrent_file.read()
                 
-        info_hash = await asyncio.to_thread(_get_hash)
-        
+            bencode_module = cast(Any, bencodepy)
+            decode = cast(Callable[[bytes], Any], bencode_module.decode)
+            torrent_data = decode(torrent_content)
+            
+            if isinstance(torrent_data, dict):
+                torrent_dict = cast(dict[bytes, Any], torrent_data)
+                info_value = torrent_dict.get(b'info')
+                
+                if isinstance(info_value, dict):
+                    encode = cast(Callable[[Any], bytes], bencode_module.encode)
+                    info = encode(info_value)
+                    info_hash = hashlib.sha1(info, usedforsecurity=False).hexdigest()
+        except Exception as e:
+            console.print(f"[red]Error computing info_hash in THR: {e}[/red]")
+            
+        if not info_hash:
+            info_hash = str(meta.get('infohash', '')).strip()
+            
         data: dict[str, str] = {}
         if info_hash:
             data['info_hash'] = info_hash
