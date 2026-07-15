@@ -165,3 +165,24 @@ class THR(UNIT3D):
         return {
             "description": "".join(desc_parts)
         }
+
+    async def get_additional_data(self, meta: Meta) -> dict[str, str]:
+        import asyncio
+        from torf import Torrent
+        
+        torrent_path = f"{meta['base_dir']}/tmp/{meta['uuid']}/BASE.torrent"
+        
+        def _get_hash() -> str:
+            try:
+                torrent = Torrent.read(torrent_path)
+                return str(torrent.infohash)
+            except Exception:
+                return ''
+                
+        info_hash = await asyncio.to_thread(_get_hash)
+        
+        data: dict[str, str] = {}
+        if info_hash:
+            data['info_hash'] = info_hash
+            
+        return data
